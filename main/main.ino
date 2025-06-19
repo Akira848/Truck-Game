@@ -1,13 +1,16 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 
-LiquidCrystal_I2C lcd(32, 16, 2);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 // Definição dos botões
-const int btnMove = 2;       // Mover seleção
-const int btnConfirm = 3;    // Confirmar resposta
-const int btnMath = 4;       // Modo Matemática
-const int btnPortuguese = 5; // Modo Português
+const int btnMove = 2;       // Mover seleção(botão branco)
+const int btnConfirm = 3;    // Confirmar resposta(botão verde)
+const int btnMath = 4;       // Modo Matemática(botão azul)
+const int btnPortuguese = 5; // Modo Português(botão amarelo)
+const int ledRed = 6;        // Led Vermelho
+const int ledGreen = 7;      // Led Verde
+const int buzzer = 8;        //Som
 
 byte caminhaoCima[8] = {
   B00000,
@@ -51,9 +54,9 @@ bool respostaCorretaEsquerda;     // true = correta está na esquerda
 // Variáveis para modo português
 String palavraCorreta;
 String palavraErrada;
-const String palavras3Letras[10] = {"ASA","GOL","MAR","SIM","OVO","MAE","UVA","NAO","FIM","GEL"};
-const String palavras3LetrasErradas[10] = {"AZA","GOU","NAR","SIN","OVU","MAI","UWA","NAU","FIN","GEU"};
-const String palavras4Letras[10] = {"CASA","BICO","MEIA","BOLO","TREM","BIFE","GELO","AZUL","OSSO","LAÇO"};
+const String palavras3Letras[10] = {"ASA","GOL","MAR","SIM","OVO","SOL","UVA","MEL","FIM","GEL"};
+const String palavras3LetrasErradas[10] = {"AZA","GOU","NAR","SIN","OVU","SEL","UWA","NEL","FIN","GEU"};
+const String palavras4Letras[10] = {"CASA","BICO","MEIA","BOLO","TREM","BIFE","GELO","AZUL","OSSO","GATO"};
 const String palavras4LetrasErradas[10] = {"CAZA","BICU","NEIA","BOLU","TREN","BIFI","JELO","ASUL","OSCO","LASO"};
 const String palavras5Letras[10] = {"VOLTA","CLIMA","PRIMO","TIGRE","ACIMA","MILHO","CILIO","PLANO","PRAGA","TALCO"};
 const String palavras5LetrasErradas[10] = {"VOUTA","CRIMA","PRIMU","TIRGE","ASIMA","MILIO","CILHO","PRANO","PLAGA","TAUCO"};
@@ -68,6 +71,9 @@ void setup() {
   pinMode(btnConfirm, INPUT_PULLUP);
   pinMode(btnMath, INPUT_PULLUP);
   pinMode(btnPortuguese, INPUT_PULLUP);
+  pinMode(buzzer, OUTPUT);
+  pinMode(ledRed, OUTPUT);
+  pinMode(ledGreen, OUTPUT);
 
   lcd.init();
   lcd.backlight();
@@ -80,6 +86,7 @@ void setup() {
 }
 
 void loop() {
+
   verificarSelecaoModo();
 
   if (!aguardandoResposta && fase <= (currentMode == MODE_MATH ? 4 : 3)) {
@@ -108,14 +115,18 @@ void mostrarMensagemBoasVindas() {
   lcd.write(byte(0)); lcd.print("   BEM VINDO  "); lcd.write(byte(0));
   lcd.setCursor(0, 1);
   lcd.write(byte(1)); lcd.print(" CAMINHONEIRO "); lcd.write(byte(1));
+  tocarSomInicioJogo();
+  piscarLedsInicioFim();
 
   while (true) {
     if (digitalRead(btnMath) == LOW) {
       currentMode = MODE_MATH;
+      somMat(); 
       break;
     }
     if (digitalRead(btnPortuguese) == LOW) {
       currentMode = MODE_PORTUGUESE;
+      somPort();
       break;
     }
     delay(100);
@@ -131,10 +142,12 @@ void mostrarMensagemBoasVindas() {
 void verificarSelecaoModo() {
   if (digitalRead(btnMath) == LOW) {
     currentMode = MODE_MATH;
+    somMat(); 
     reiniciarJogo();
   }
   if (digitalRead(btnPortuguese) == LOW) {
     currentMode = MODE_PORTUGUESE;
+    somPort();
     reiniciarJogo();
   }
 }
@@ -158,8 +171,9 @@ void reiniciarJogo() {
 
 // --- Geração de perguntas ---
 void gerarPergunta() {
-  if (currentMode == MODE_MATH) gerarPerguntaMatematica();
-  else gerarPerguntaPortugues();
+  if (currentMode == MODE_MATH){ 
+  gerarPerguntaMatematica();}
+  else{ gerarPerguntaPortugues();}
 }
 
 void gerarPerguntaMatematica() {
@@ -257,10 +271,10 @@ void gerarPerguntaPortugues() {
   respostaCorretaEsquerda = (posicaoCorreta == 0);
 
   if (respostaCorretaEsquerda) {
-    lcd.setCursor(4, 1); lcd.print(palavraCorreta);
+    lcd.setCursor(3, 1); lcd.print(palavraCorreta);
     lcd.setCursor(10, 1); lcd.print(palavraErrada);
   } else {
-    lcd.setCursor(4, 1); lcd.print(palavraErrada);
+    lcd.setCursor(3, 1); lcd.print(palavraErrada);
     lcd.setCursor(10, 1); lcd.print(palavraCorreta);
   }
 
@@ -271,8 +285,8 @@ void gerarPerguntaPortugues() {
 // --- Seleção do caminhão ---
 void mostrarSelecao() {
   lcd.setCursor(2, 1); lcd.print(' ');
-  lcd.setCursor(8, 1); lcd.print(' ');
-  int col = respostaSelecionada ? 2 : 8;
+  lcd.setCursor(9, 1); lcd.print(' ');
+  int col = respostaSelecionada ? 2 : 9;
   lcd.setCursor(col, 1);
   lcd.write(byte(0));
 }
@@ -314,11 +328,20 @@ void verificarResposta() {
 
   if (tempoEsgotado) {
     lcd.print(" TEMPO ESGOTADO!");
+    tocarSomErro();
+    ligaLedVermelho();
+    
   } else if (acertou) {
     lcd.print("Resposta Correta");
     pontos++;
+    tocarSomCorreto();
+    ligaLedVerde();
+    
   } else {
     lcd.print("Resposta Errada");
+    tocarSomErro();
+    ligaLedVermelho();
+    
   }
 
   lcd.setCursor(4, 1);
@@ -335,6 +358,8 @@ void passarParaProximaFase() {
   if (fase > maxF) {
     lcd.clear();
     lcd.setCursor(0, 0); lcd.print("  Fim do Jogo!");
+    tocarSomFimDeJogo();
+    piscarLedsInicioFim();
     lcd.setCursor(0, 1); lcd.print(" Acertos: "); lcd.print(pontos); lcd.print("/"); lcd.print(maxF * 10);
     
     while (digitalRead(btnConfirm) == HIGH) {
@@ -356,5 +381,91 @@ void passarParaProximaFase() {
     }
     
     delay(200);
+  }
+}
+
+void tocarSomCorreto() {
+    tone(buzzer, 1200, 100); // nota aguda
+  delay(120);
+  tone(buzzer, 1500, 100); // mais aguda ainda
+  delay(120);
+  noTone(buzzer);
+}
+
+void tocarSomErro() {
+ tone(buzzer, 400, 200); // tom grave
+  delay(250);
+  tone(buzzer, 300, 200); // mais grave
+  delay(250);
+  noTone(buzzer);
+}
+
+void somPort(){
+  int melodia[] = {659, 698, 784, 659}; // mi, fá, sol, mi
+  int duracao = 180;
+
+  for (int i = 0; i < 4; i++) {
+    tone(buzzer, melodia[i], duracao);
+    delay(duracao + 40);
+  }
+  noTone(buzzer);
+}
+
+void somMat(){
+int melodia[] = {262, 330, 392, 523}; // dó, mi, sol, dó (agudo)
+  int duracao = 200;
+
+  for (int i = 0; i < 4; i++) {
+    tone(buzzer, melodia[i], duracao);
+    delay(duracao + 50);
+  }
+  noTone(buzzer);
+}
+
+void tocarSomFimDeJogo() {
+  int notas[] = {523, 494, 440, 392, 349, 330, 294, 262}; // Dó a Dó descendente (C5 a C4)
+  for (int i = 0; i < 8; i++) {
+    tone(buzzer, notas[i], 150);
+    delay(170);
+  }
+  delay(200);
+  tone(buzzer, 262, 100); // Dó
+  delay(100);
+  tone(buzzer, 392, 100); // Sol
+  delay(100);
+  tone(buzzer, 523, 300); // Dó (mais agudo)
+  delay(320);
+  noTone(buzzer);
+}
+
+void tocarSomInicioJogo() {
+  int notas[] = {262, 294, 330, 349, 392, 440, 494, 523}; // Dó a Dó (C4 a C5)
+  for (int i = 0; i < 8; i++) {
+    tone(buzzer, notas[i], 150);
+    delay(170);
+  }
+  noTone(buzzer);
+}
+
+void ligaLedVermelho(){
+  digitalWrite(ledRed, HIGH);
+  delay(3500);
+  digitalWrite(ledRed, LOW);
+  }
+
+void ligaLedVerde(){
+  digitalWrite(ledGreen, HIGH);
+  delay(3500);
+    digitalWrite(ledGreen, LOW);
+  }
+
+void piscarLedsInicioFim() {
+  for (int i = 0; i < 5; i++) {
+    digitalWrite(ledRed, HIGH);
+    digitalWrite(ledGreen, HIGH);
+    delay(300);
+    digitalWrite(ledRed, LOW);
+    digitalWrite(ledGreen, LOW);
+    delay(300);
   }
 }
